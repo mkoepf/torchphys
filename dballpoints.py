@@ -33,41 +33,6 @@ def random_points_in_sphere(N, d, radius=1.0, device=None):
     return x * r
 
 
-def visualize_points(points):
-    """
-    Visualize points for d=1, 2, or 3.
-    Args:
-        points (Tensor): Shape (N, d), d=1,2,3
-    """
-    N, d = points.shape
-    if d == 1:
-        plt.figure()
-        plt.scatter(points[:, 0], torch.zeros(N), alpha=0.7)
-        plt.xlabel("x")
-        plt.title("Points in 1D interval")
-        plt.yticks([])
-        plt.show()
-    elif d == 2:
-        plt.figure()
-        plt.scatter(points[:, 0], points[:, 1], alpha=0.7)
-        plt.xlabel("x")
-        plt.ylabel("y")
-        plt.title("Points in 2D disk")
-        plt.axis("equal")
-        plt.show()
-    elif d == 3:
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection="3d")
-        ax.scatter(points[:, 0], points[:, 1], points[:, 2], alpha=0.7)
-        ax.set_xlabel("x")
-        ax.set_ylabel("y")
-        ax.set_zlabel("z")
-        ax.set_title("Points in 3D sphere")
-        plt.show()
-    else:
-        raise ValueError("Visualization only supported for d=1, 2, or 3")
-
-
 def k_nearest_neighbors(points, k):
     """
     For each point, find the indices of its k nearest neighbors.
@@ -81,34 +46,39 @@ def k_nearest_neighbors(points, k):
     # Compute pairwise distances
     dists = torch.cdist(points, points)  # (N, N)
     # Exclude self (set diagonal to large value)
-    dists.fill_diagonal_(float('inf'))
+    dists.fill_diagonal_(float("inf"))
     # Get indices of k smallest distances for each point
     neighbors = torch.topk(dists, k, largest=False).indices  # (N, k)
     return neighbors
 
 
+def neighbor_distances(points, neighbors):
+    """
+    For each point, compute the distances to its k nearest neighbors (no clamping).
+    Args:
+        points (Tensor): Shape (N, d)
+        neighbors (Tensor): Shape (N, k) with neighbor indices
+    Returns:
+        Tensor of shape (N, k) with distances
+    """
+    neighbor_points = points[neighbors]  # (N, k, d)
+    points_expanded = points.unsqueeze(1)  # (N, 1, d)
+    dists = torch.norm(points_expanded - neighbor_points, dim=2)  # (N, k)
+    return dists
+
 
 def sum_inverse_distances(points, neighbors):
     """
-    For each point, sum 1.0 / dist(x, x_i) for all x_i in its nearest neighbors.
+    For each point, sum 1.0 / dist(x, x_i) for all x_i in its nearest neighbors (with clamping).
     Args:
         points (Tensor): Shape (N, d)
         neighbors (Tensor): Shape (N, k) with neighbor indices
     Returns:
         Tensor of shape (N,) with the sum for each point
     """
-    N, d = points.shape
-    k = neighbors.shape[1]
-    # Gather neighbor coordinates for each point
-    neighbor_points = points[neighbors]  # (N, k, d)
-    # Expand points for broadcasting
-    points_expanded = points.unsqueeze(1)  # (N, 1, d)
-    # Compute distances
-    dists = torch.norm(points_expanded - neighbor_points, dim=2)  # (N, k)
-    # Avoid division by zero (shouldn't happen, but just in case)
+    dists = neighbor_distances(points, neighbors)
     dists = torch.clamp(dists, min=1e-12)
-    # Sum inverse distances
-    inv_sum = (1.0 / dists).sum(dim=1)  # (N,)
+    inv_sum = (1.0 / dists).sum(dim=1)
     return inv_sum
 
 
@@ -126,6 +96,49 @@ def sum_inverse_dists_to_boundary(points, radius):
     return (1.0 / dists).sum()
 
 
+def plot_points_and_loss_on_axes(axes, points, loss_history, fig=None):
+    """
+    Helper to plot points and loss on given axes (used by both static and live).
+    Args:
+        axes: list of Axes (length 2)
+        points (Tensor): Shape (N, d), d=1,2,3
+        loss_history (list or Tensor): Loss values over time
+        fig: matplotlib Figure (optional, needed for 3D)
+    """
+    N, d = points.shape
+    axes[0].cla()
+    if d == 1:
+        axes[0].scatter(points[:, 0], torch.zeros(N), alpha=0.7)
+        axes[0].set_xlabel("x")
+        axes[0].set_title("Points in 1D interval")
+        axes[0].set_yticks([])
+    elif d == 2:
+        axes[0].scatter(points[:, 0], points[:, 1], alpha=0.7)
+        axes[0].set_xlabel("x")
+        axes[0].set_ylabel("y")
+        axes[0].set_title("Points in 2D disk")
+        axes[0].axis("equal")
+    elif d == 3:
+        if fig is not None:
+            axes[0].remove()
+            ax3d = fig.add_subplot(121, projection="3d")
+            ax3d.scatter(points[:, 0], points[:, 1], points[:, 2], alpha=0.7)
+            ax3d.set_xlabel("x")
+            ax3d.set_ylabel("y")
+            ax3d.set_zlabel("z")
+            ax3d.set_title("Points in 3D sphere")
+            axes[0] = ax3d
+        else:
+            raise ValueError("fig must be provided for 3D plot")
+    else:
+        raise ValueError("Visualization only supported for d=1, 2, or 3")
+    axes[1].cla()
+    axes[1].plot(loss_history)
+    axes[1].set_xlabel("Step")
+    axes[1].set_ylabel("Loss")
+    axes[1].set_title("Loss over time")
+
+
 def visualize_points_and_loss(points, loss_history):
     """
     Show a figure with two subplots: left = points, right = loss over time.
@@ -134,36 +147,10 @@ def visualize_points_and_loss(points, loss_history):
         loss_history (list or Tensor): Loss values over time
     """
     import matplotlib.pyplot as plt
+
     N, d = points.shape
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    # Left: points
-    if d == 1:
-        axes[0].scatter(points[:, 0], torch.zeros(N), alpha=0.7)
-        axes[0].set_xlabel('x')
-        axes[0].set_title('Points in 1D interval')
-        axes[0].set_yticks([])
-    elif d == 2:
-        axes[0].scatter(points[:, 0], points[:, 1], alpha=0.7)
-        axes[0].set_xlabel('x')
-        axes[0].set_ylabel('y')
-        axes[0].set_title('Points in 2D disk')
-        axes[0].axis('equal')
-    elif d == 3:
-        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
-        ax3d = fig.add_subplot(121, projection='3d')
-        ax3d.scatter(points[:, 0], points[:, 1], points[:, 2], alpha=0.7)
-        ax3d.set_xlabel('x')
-        ax3d.set_ylabel('y')
-        ax3d.set_zlabel('z')
-        ax3d.set_title('Points in 3D sphere')
-        axes[0].remove()  # Remove the 2D axes
-    else:
-        raise ValueError('Visualization only supported for d=1, 2, or 3')
-    # Right: loss
-    axes[1].plot(loss_history)
-    axes[1].set_xlabel('Step')
-    axes[1].set_ylabel('Loss')
-    axes[1].set_title('Loss over time')
+    plot_points_and_loss_on_axes(axes, points, loss_history, fig=fig)
     plt.tight_layout()
     plt.show()
 
@@ -178,35 +165,8 @@ def visualize_points_and_loss_live(fig, axes, points, loss_history):
         loss_history (list or Tensor): Loss values over time
     """
     import matplotlib.pyplot as plt
-    N, d = points.shape
-    axes[0].cla()
-    if d == 1:
-        axes[0].scatter(points[:, 0], torch.zeros(N), alpha=0.7)
-        axes[0].set_xlabel('x')
-        axes[0].set_title('Points in 1D interval')
-        axes[0].set_yticks([])
-    elif d == 2:
-        axes[0].scatter(points[:, 0], points[:, 1], alpha=0.7)
-        axes[0].set_xlabel('x')
-        axes[0].set_ylabel('y')
-        axes[0].set_title('Points in 2D disk')
-        axes[0].axis('equal')
-    elif d == 3:
-        axes[0].remove()
-        ax3d = fig.add_subplot(121, projection='3d')
-        ax3d.scatter(points[:, 0], points[:, 1], points[:, 2], alpha=0.7)
-        ax3d.set_xlabel('x')
-        ax3d.set_ylabel('y')
-        ax3d.set_zlabel('z')
-        ax3d.set_title('Points in 3D sphere')
-        axes[0] = ax3d
-    else:
-        raise ValueError('Visualization only supported for d=1, 2, or 3')
-    axes[1].cla()
-    axes[1].plot(loss_history)
-    axes[1].set_xlabel('Step')
-    axes[1].set_ylabel('Loss')
-    axes[1].set_title('Loss over time')
+
+    plot_points_and_loss_on_axes(axes, points, loss_history, fig=fig)
     plt.tight_layout()
     plt.pause(0.001)
 
@@ -257,10 +217,13 @@ def optimize_points(points, rad, k, lr=0.05, steps=200, verbose=True):
 
             try:
                 import matplotlib.pyplot as plt
+
                 if fig is None or axes is None:
                     plt.ion()
                     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-                visualize_points_and_loss_live(fig, axes, points.detach(), loss_history)
+                visualize_points_and_loss_live(
+                    fig, axes, points.detach(), loss_history
+                )
             except Exception as e:
                 print(f"Visualization failed: {e}")
     if fig is not None:
