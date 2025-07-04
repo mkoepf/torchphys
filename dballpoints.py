@@ -91,22 +91,6 @@ def sum_inverse_distances(
     return inv_sum
 
 
-def sum_inverse_dists_to_boundary(
-    points: torch.Tensor, radius: float
-) -> torch.Tensor:
-    """
-    Compute the sum over all points of 1.0 / |distance to boundary|.
-    Args:
-        points (Tensor): Shape (N, d)
-        radius (float): Sphere radius
-    Returns:
-        float: The sum over all points
-    """
-    dists = dists_to_boundary(points, radius).abs()
-    dists = torch.clamp(dists, min=1e-12)  # Avoid division by zero
-    return (1.0 / dists).sum()
-
-
 def plot_points_and_loss_on_axes(
     axes,
     points: torch.Tensor,
