@@ -6,15 +6,18 @@
 # ]
 # ///
 import argparse
+from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import torch
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 (needed for 3D)
 
 
-def random_points_in_sphere(N, d, radius=1.0, device=None):
+def random_points_in_sphere(
+    N: int, d: int, radius: float, device: Optional[torch.device] = None
+) -> torch.Tensor:
     """
-    Generate N random points uniformly inside a d-dimensional sphere of given radius.
+    Generate N random points uniformly inside a d-dimensional sphere of given
+    radius.
 
     Args:
         N (int): Number of points.
@@ -33,7 +36,7 @@ def random_points_in_sphere(N, d, radius=1.0, device=None):
     return x * r
 
 
-def k_nearest_neighbors(points, k):
+def k_nearest_neighbors(points: torch.Tensor, k: int) -> torch.Tensor:
     """
     For each point, find the indices of its k nearest neighbors.
     Args:
@@ -52,9 +55,11 @@ def k_nearest_neighbors(points, k):
     return neighbors
 
 
-def neighbor_distances(points, neighbors):
+def neighbor_distances(
+    points: torch.Tensor, neighbors: torch.Tensor
+) -> torch.Tensor:
     """
-    For each point, compute the distances to its k nearest neighbors (no clamping).
+    For each point, compute the distances to its k nearest neighbors.
     Args:
         points (Tensor): Shape (N, d)
         neighbors (Tensor): Shape (N, k) with neighbor indices
@@ -67,9 +72,13 @@ def neighbor_distances(points, neighbors):
     return dists
 
 
-def sum_inverse_distances(points, neighbors):
+def sum_inverse_distances(
+    points: torch.Tensor, neighbors: torch.Tensor
+) -> torch.Tensor:
     """
-    For each point, sum 1.0 / dist(x, x_i) for all x_i in its nearest neighbors (with clamping).
+    For each point, sum 1.0 / dist(x, x_i) for all x_i in its nearest neighbors
+    (with clamping).
+
     Args:
         points (Tensor): Shape (N, d)
         neighbors (Tensor): Shape (N, k) with neighbor indices
@@ -82,7 +91,9 @@ def sum_inverse_distances(points, neighbors):
     return inv_sum
 
 
-def sum_inverse_dists_to_boundary(points, radius):
+def sum_inverse_dists_to_boundary(
+    points: torch.Tensor, radius: float
+) -> torch.Tensor:
     """
     Compute the sum over all points of 1.0 / |distance to boundary|.
     Args:
@@ -96,9 +107,14 @@ def sum_inverse_dists_to_boundary(points, radius):
     return (1.0 / dists).sum()
 
 
-def plot_points_and_loss_on_axes(axes, points, loss_history, fig=None):
+def plot_points_and_loss_on_axes(
+    axes,
+    points: torch.Tensor,
+    loss_history: List[float],
+    fig: Optional[plt.Figure] = None,
+) -> None:
     """
-    Helper to plot points and loss on given axes (used by both static and live).
+    Helper to plot points and loss on given axes.
     Args:
         axes: list of Axes (length 2)
         points (Tensor): Shape (N, d), d=1,2,3
@@ -139,7 +155,9 @@ def plot_points_and_loss_on_axes(axes, points, loss_history, fig=None):
     axes[1].set_title("Loss over time")
 
 
-def visualize_points_and_loss(points, loss_history):
+def visualize_points_and_loss(
+    points: torch.Tensor, loss_history: List[float]
+) -> None:
     """
     Show a figure with two subplots: left = points, right = loss over time.
     Args:
@@ -155,7 +173,9 @@ def visualize_points_and_loss(points, loss_history):
     plt.show()
 
 
-def visualize_points_and_loss_live(fig, axes, points, loss_history):
+def visualize_points_and_loss_live(
+    fig: plt.Figure, axes, points: torch.Tensor, loss_history: List[float]
+) -> None:
     """
     Update the given matplotlib figure/axes with new points and loss.
     Args:
@@ -171,7 +191,7 @@ def visualize_points_and_loss_live(fig, axes, points, loss_history):
     plt.pause(0.001)
 
 
-def project_onto_sphere(points, radius):
+def project_onto_sphere(points: torch.Tensor, radius: float) -> torch.Tensor:
     """
     Project points outside the sphere back onto the surface.
     Args:
@@ -185,9 +205,17 @@ def project_onto_sphere(points, radius):
     return points * scale
 
 
-def optimize_points(points, rad, k, lr=0.05, steps=200, verbose=True):
+def optimize_points(
+    points: torch.Tensor,
+    rad: float,
+    k: int,
+    lr: float = 0.05,
+    steps: int = 200,
+    verbose: bool = True,
+) -> Tuple[torch.Tensor, List[float]]:
     """
-    Optimize point locations to minimize the sum of inverse distances to k nearest neighbors.
+    Optimize point locations to minimize the sum of inverse distances to k
+    nearest neighbors.
     Args:
         points (Tensor): Initial points, shape (N, d), requires_grad=False
         k (int): Number of neighbors
@@ -247,17 +275,37 @@ if __name__ == "__main__":
         default=1.0,
         help="Sphere radius (default: 1.0)",
     )
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=10,
+        help="Number of nearest neighbors (default: 10)",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=0.0001,
+        help="Learning rate (default: 0.0001)",
+    )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=25000,
+        help="Number of optimization steps (default: 25000)",
+    )
     args = parser.parse_args()
 
     N = args.N
     d = args.d
     radius = args.radius
+    k = args.k
+    lr = args.lr
+    steps = args.steps
 
     points = random_points_in_sphere(N, d, radius)
 
     newpoints, lh = optimize_points(
-        points, rad=radius, k=10, lr=0.0001, steps=25000, verbose=True
+        points, rad=radius, k=k, lr=lr, steps=steps, verbose=True
     )
     print("Optimization complete. Final points:")
     print(newpoints)
-    visualize_points_and_loss(newpoints, lh)
