@@ -4,7 +4,7 @@ A collection of physics-related numerical tools and simulations using PyTorch.
 
 ## Simulations
 
-## Pendulum 
+### Pendulum 
 
 Numerically solve and visualize the motion of a [mathematical
 pendulum](https://en.wikipedia.org/wiki/Pendulum_(mechanics))
@@ -53,13 +53,71 @@ above, gives you the following plots:
 ![phase space trajectory
 (phi(t),psi(t))](/images/pendulum_homoclinic_phasespace.png)
 
+### Repellant points in a d-ball
+
+Simulates a number of points inside a d-ball (a d-dimensional ball, i.e., a line
+for $d=1$, a disk for $d=2$, a ball for $d=3$, ...) repelling each other.
+
+The simulation simply minimizes the "energy" given by
+
+$$
+E = \sum_{\vec{p}\in P} \sum_{\vec{q} \in (\textrm{neigbors of }\vec{p})})\frac{1}{|\vec{p}-\vec{q}|}.
+$$
+
+It uses PyTorch's automatic differentiation, i.e., the standard optimization
+loop, i.e.,
+
+```python
+    for step in range(steps):
+        optimizer.zero_grad()
+        neighbors = k_nearest_neighbors(points, k)
+        loss = sum_inverse_distances(points, neighbors).sum()
+        loss.backward()
+        optimizer.step()
+```
+
+The points are confined to the d-ball by simply projecting any "leaver" back
+onto the ball's surface.
+
+For large numbers of points, only $k$ nearest neighbors are used.
+
+While the optimization runs, it displays both the points' locations and the
+loss history.
+
+Here's an example snapshot from 
+
+```bash
+python dballpoints.py --N 100 --d 2 --radius 10.0 --k 50 --steps 500000 --lr 0.00002
+```
+
+![plot of point locations and loss history](/images/dball.png)
+
 ## Basic utilities
 
 The simulations make use of some basic functionality:
 
-- **Finite Difference Derivatives**: Compute first, second, third, and fourth
-central finite differences for 1D periodic tensors using PyTorch.
+### Finite Difference Derivatives
 
+Compute first, second, third, and fourth central finite differences for 1D
+**periodic domains** using PyTorch tensors.
+
+The `fd_derivatives.py` module provides functions to compute periodic finite
+differences:
+
+- `first_central_difference_periodic(u, dx)`
+- `second_central_difference_periodic(u, dx)`
+- `third_central_difference_periodic(u, dx)`
+- `fourth_central_difference_periodic(u, dx)`
+
+Example:
+```python
+import torch
+from fd_derivatives import first_central_difference_periodic
+
+u = torch.sin(torch.linspace(0, 2 * torch.pi, 100))
+dx = u[1] - u[0]
+deriv = first_central_difference_periodic(u, dx)
+```
 
 ---
 
@@ -89,47 +147,14 @@ uv run pendulum.py
 
 ### 1. Finite Difference Derivatives
 
-The `fd_derivatives.py` module provides functions to compute periodic finite
-differences:
-
-- `first_central_difference_periodic(u, dx)`
-- `second_central_difference_periodic(u, dx)`
-- `third_central_difference_periodic(u, dx)`
-- `fourth_central_difference_periodic(u, dx)`
-
-Example:
-```python
-import torch
-from fd_derivatives import first_central_difference_periodic
-
-u = torch.sin(torch.linspace(0, 2 * torch.pi, 100))
-dx = u[1] - u[0]
-deriv = first_central_difference_periodic(u, dx)
-```
-
-### 2. Pendulum Simulation
-
-The `pendulum.py` script simulates a simple pendulum and visualizes its motion.
-
-The script will display time series and phase space plots.
-
 ---
 
 ## Testing
 
-Run tests with:
+You can use the test in the `test_...` files to understand what the code is 
+doing.
 
-```bash
-pytest test_fd_derivatives.py
-```
-
----
-
-## File Overview
-
-- `fd_derivatives.py`: Periodic finite difference functions (1st–4th order)
-- `pendulum.py`: Pendulum ODE simulation and visualization
-- `test_fd_derivatives.py`: Pytest-based tests for finite difference functions
+To actually run the tests, use `pytest`.
 
 ---
 
